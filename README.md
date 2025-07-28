@@ -1,118 +1,201 @@
-# Challenge1B-Shawarma-Adobe
-# PDF Structure Extraction Pipeline
+# Persona-Driven Document Intelligence System (Hackathon Round 1B)
 
-This project extracts hierarchical structure (titles, headings, outline) from PDF documents using a combination of font, text pattern, visual, and semantic analysis.
+This project implements the **Persona-Driven Document Intelligence** pipeline designed for the Adobe Hackathon Round 1B challenge.  
+It processes multiple PDFs in parallel, intelligently understands a specific user persona and their job to be done, and extracts and ranks the most relevant PDF content tailored to that persona.
+
+---
 
 ## Features
 
-- Multi-threaded PDF analysis for speed  
-- Font, text pattern, and visual layout analysis  
-- Semantic validation of headings  
-- Outputs structured JSON for each PDF  
+- Lightning-fast parallel PDF processing
+- Semantic chunking and structured content extraction
+- Zero-shot persona and job-to-be-done understanding via NLP
+- Fast and efficient semantic matching with SentenceTransformers (`all-MiniLM-L6-v2`)
+- Multi-criteria intelligent ranking combining semantic similarity, keyword relevance, and section importance
+- Fully offline, CPU-only execution, Dockerized and optimized for `linux/amd64`
+- JSON output formatted per hackathon strict requirements
 
 ---
 
 ## Directory Structure
-
-- `src/` - Source code for extractors and processors  
-- `input/` - Place your PDF files here for processing  
-- `output/` - Extracted JSON files will be saved here  
-- `requirements.txt` / `Requirements.txt` - Python dependencies  
-- `Dockerfile` - For containerized execution  
+```
+persona_engine/
+├── input/ # Place PDFs and persona_job.json here
+├── output/ # Output JSON files will be saved here
+├── models/ # Offline embedding model files (e.g. all-MiniLM-L6-v2)
+├── src/
+│ ├── engines/
+│ │ ├── document_processor.py
+│ │ ├── persona_engine.py
+│ │ ├── semantic_engine.py
+│ │ └── ranking_engine.py
+│ └── utils/
+├── main.py # Orchestrates the full pipeline execution
+├── requirements.txt
+├── Dockerfile
+├── en_core_web_sm-3.6.0-py3-none-any.whl # Offline spaCy model wheel
+├── .gitignore
+└── README.md # This file
+```
 
 ---
 
-## Requirements
+## Setup & Installation
 
-- Python 3.8+  
-- System dependencies:  
-  - Tesseract OCR (for visual analysis)  
-  - libgl1-mesa-glx, libglib2.0-0 (for OpenCV)  
-- See `requirements.txt` for Python packages  
+### Prerequisites
 
-### Python Dependencies
+- Docker Desktop with Linux containers enabled (recommended)  
+- Python 3.9+ (only for local testing, not required if using Docker)
 
-Install with:
+### Python Dependencies (for local runs/testing)
 
+Install dependencies:
+
+```
 pip install -r requirements.txt
+pip install ./en_core_web_sm-3.6.0-py3-none-any.whl
+```
 
-text
+> *Note:* The spaCy model wheel is included offline per hackathon requirement.
 
-### System Dependencies (Ubuntu/Debian)
+### Models
 
-sudo apt-get update
-sudo apt-get install -y tesseract-ocr tesseract-ocr-eng libgl1-mesa-glx libglib2.0-0
-
-text
-
-On Windows, install [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) and ensure it is in your PATH.
+- Download the [all-MiniLM-L6-v2](https://www.sbert.net/docs/pretrained_models.html) SentenceTransformer model **offline** and place it inside the `models/all-MiniLM-L6-v2/` directory.
+- Keep the spaCy model wheel (`en_core_web_sm-3.6.0-py3-none-any.whl`) in the root for offline install during Docker build or local install.
 
 ---
 
 ## Usage
 
-### 1. Place PDFs in the Input Folder
+### Step 1: Prepare Inputs
 
-Copy your PDF files into the `input/` directory.
+Place your **input PDF files** into the `input/` folder.
 
-### 2. Run the Extractor
+Add a `persona_job.json` file in `input/` describing the persona and job, example(as per given in the instructions:
+```
+{
+"persona": "PhD Researcher in Computational Biology",
+"job_to_be_done": "Prepare comprehensive literature review focusing on methodologies, datasets, and performance benchmarks"
+}
+```
 
-From the `extractions/` directory, run:
+### Step 2: Run Locally (Optional)
 
-python src/main.py
+You can run the pipeline locally:
 
-text
+```
+python main.py
+```
 
-- The script will process all PDFs in `input/` and write JSON files to `output/`.
+Outputs will be saved to the `output/output.json` file.
 
-### 3. View Results
+### Step 3: Run with Docker (Recommended for Production/Submission)
 
-Check the `output/` directory for `.json` files corresponding to each input PDF.
+1. **Build the Docker Image**
+
+```
+docker build --platform linux/amd64 -t persona_engine:latest .
+```
+
+2. **Run the Docker Container**
+
+```
+docker run --rm
+-v $(pwd)/input:/app/input
+-v $(pwd)/output:/app/output
+--network none persona_engine:latest
+```
+
+> On Windows, replace `$(pwd)` with the full absolute path, e.g.:  
+>  
+> ```
+> docker run --rm `
+>   -v "C:\path\to\persona_engine\input:/app/input" `
+>   -v "C:\path\to\persona_engine\output:/app/output" `
+>   --network none persona_engine:latest
+> ```
+
+3. The results will be available in `output/output.json`.
 
 ---
 
-## Docker Usage
+## System Architecture Overview
 
-A Dockerfile is provided for easy setup.
+### Phase 1: Parallel Document Processor
 
-### Build the Docker Image
+- Uses multithreading (`ThreadPoolExecutor`) and `PyMuPDF` for fast, parallel PDF section extraction.
+- Produces semantically chunked sections with metadata (page numbers, section titles).
 
-docker build -t pdf-extractor .
+### Phase 2: Zero-Shot Persona Engine
 
-text
+- Analyzes persona descriptions and job-to-be-done text using spaCy NLP.
+- Extracts skills, interests, and job information requirements dynamically without training.
 
-### Run the Container
+### Phase 3: Semantic Matching Engine
 
-docker run --rm -v $(pwd)/input:/app/input -v $(pwd)/output:/app/output pdf-extractor
+- Encodes document sections and combined persona-job information using efficient CPU-friendly MiniLM embeddings.
+- Uses cosine similarity combined with keyword boosting for relevance scoring.
 
-text
+### Phase 4: Intelligent Ranker
 
-- Mounts your local `input/` and `output/` folders into the container.
-
----
-
-## Configuration
-
-- Most settings are in `src/utils/config.py` (DPI, timeouts, confidence thresholds, etc.)  
-- By default, processes all PDFs in `input/` and writes to `output/`.
+- Applies multi-criteria ranking: semantic similarity, keyword relevance, section importance.
+- Extracts refined sub-sections and validates output quality.
+- Produces final ranked content ready for downstream consumption.
 
 ---
 
-## Sample Data
+## Input/Output Specifications
 
-- Example PDFs are in `input/`  
-- Example outputs are in `output/`
+### Input
+```
+{
+"documents": ["doc1.pdf", "doc2.pdf", "doc3.pdf"],
+"persona": "PhD Researcher in Computational Biology",
+"job_to_be_done": "Prepare comprehensive literature review focusing on methodologies, datasets, and performance benchmarks"
+}
+```
+
+- `documents`: list of PDF filenames located in `input/`  
+- `persona`: string describing the persona  
+- `job_to_be_done`: string describing the task  
+
+### Output (`output/output.json`)
+
+JSON containing:
+
+- `metadata` (input parameters, timestamps, processing time)  
+- `extracted_sections` (document, page, section title, importance rank, relevance score)  
+- `sub_section_analysis` (refined text extracted from top sections, ranked)  
+
+(Full output format per hackathon requirements.)
+
+---
+
+## Important Notes
+
+- The entire system runs **CPU-only**, no GPU dependencies.  
+- Model sizes are under **1GB**, compliant with hackathon constraints.  
+- No internet is required during runtime; all models are pre-downloaded and included.  
+- Docker container runs on Linux/amd64 as mandated.  
+- Input/output folders are mounted into Docker; no hardcoded paths.  
+- Processing time aims to be under 60 seconds for 3-5 documents.
 
 ---
 
 ## Troubleshooting
 
-- Ensure Tesseract OCR is installed and accessible.  
-- For Windows, you may need to add Tesseract to your PATH.  
-- If you encounter missing dependencies, check both `requirements.txt` and system packages.  
+- Ensure your PDFs and `persona_job.json` are correctly placed in `input/`.  
+- Confirm the MiniLM model folder exists at `models/all-MiniLM-L6-v2`.  
+- For Docker, ensure correct path mounting and that Docker Desktop is running with Linux containers enabled.  
+- If spaCy throws errors about missing models, confirm the wheel is installed during Docker build or locally.  
+- Check Docker build logs for errors during dependency installation.  
+- Use logs/print statements inside code for debugging phase-specific issues.
 
 ---
 
 ## License
 
-MIT License
+This project is licensed under the MIT License.
+
+
+
